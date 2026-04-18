@@ -36,6 +36,21 @@ OCR_CACHE_VERSION = "v5"
 DEFAULT_SQLITE_URL = f"sqlite:///{DATABASE_PATH}"
 DATABASE_URL = os.environ.get("DATABASE_URL", DEFAULT_SQLITE_URL)
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "webp"}
+APP_NAME = "All Bills Tracker"
+BILL_TYPE_OPTIONS = [
+    "electricity",
+    "water",
+    "gas",
+    "internet",
+    "mobile",
+    "rent",
+    "insurance",
+    "school_fee",
+    "maintenance",
+    "loan",
+    "credit_card",
+    "other",
+]
 
 
 app = Flask(__name__)
@@ -103,10 +118,10 @@ def db_insert_bill(params: tuple[Any, ...]) -> int:
         INSERT INTO bills (
             provider, bill_type, consumer_name, service_number, area_code, mobile_number,
             address, bill_date, billing_month, due_date, last_paid_date, units_consumed,
-            net_amount, raw_extracted_text, file_path, original_filename, content_type,
-            review_status, created_at, updated_at
+            net_amount, notes, raw_extracted_text, file_path, original_filename,
+            content_type, review_status, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
     if db_backend() == "postgres":
         cursor = db.execute(sql_placeholders(query) + " RETURNING id", params)
@@ -146,6 +161,7 @@ def init_db() -> None:
                 last_paid_date TEXT,
                 units_consumed INTEGER,
                 net_amount DOUBLE PRECISION,
+                notes TEXT,
                 raw_extracted_text TEXT,
                 file_path TEXT NOT NULL,
                 original_filename TEXT NOT NULL,
@@ -173,6 +189,7 @@ def init_db() -> None:
                 last_paid_date TEXT,
                 units_consumed INTEGER,
                 net_amount REAL,
+                notes TEXT,
                 raw_extracted_text TEXT,
                 file_path TEXT NOT NULL,
                 original_filename TEXT NOT NULL,
@@ -184,8 +201,48 @@ def init_db() -> None:
         """
 
     db.execute(schema)
+    ensure_column(db, "bills", "notes", "TEXT")
     db.commit()
     db.close()
+
+
+def ensure_column(db: Any, table_name: str, column_name: str, definition: str) -> None:
+    if db_backend() == "postgres":
+        exists = db.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            """,
+            (table_name, column_name),
+        ).fetchone()
+        if not exists:
+            db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+        return
+
+    columns = db.execute(f"PRAGMA table_info({table_name})").fetchall()
+    if not any(column[1] == column_name for column in columns):
+        db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+
+
+def normalize_bill_type(value: str) -> str:
+    cleaned = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return cleaned
+
+
+def display_bill_type(value: str | None) -> str:
+    if not value:
+        return "Not set"
+    return value.replace("_", " ").title()
+
+
+@app.context_processor
+def inject_template_helpers() -> dict[str, Any]:
+    return {
+        "app_name": APP_NAME,
+        "bill_type_options": BILL_TYPE_OPTIONS,
+        "display_bill_type": display_bill_type,
+    }
 
 
 def allowed_file(filename: str) -> bool:
@@ -671,18 +728,19 @@ def collect_bill_form(form: Any) -> dict[str, Any]:
         if not bill[field] and draft.get(field):
             bill[field] = draft[field]
 
+    bill["bill_type"] = normalize_bill_type(bill.get("bill_type", ""))
     units_value = bill.get("units_consumed") or None
     amount_value = bill.get("net_amount") or None
 
     try:
         bill["units_consumed"] = int(units_value) if units_value else None
     except ValueError as exc:
-        raise ValueError("Units consumed must be a whole number.") from exc
+        raise ValueError("Usage or units must be a whole number.") from exc
 
     try:
         bill["net_amount"] = float(amount_value) if amount_value else None
     except ValueError as exc:
-        raise ValueError("Net amount must be a number.") from exc
+        raise ValueError("Amount must be a number.") from exc
 
     bill["review_status"] = form.get("review_status", "needs_review").strip() or "needs_review"
     bill["raw_extracted_text"] = raw_text
@@ -693,6 +751,21 @@ def get_bill_or_404(bill_id: int) -> Any:
     bill = db_fetchone("SELECT * FROM bills WHERE id = ?", (bill_id,))
     if bill is None:
         abort(404)
+    return bill
+
+
+def delete_bill_record(bill_id: int) -> Any:
+    bill = get_bill_or_404(bill_id)
+    file_path = bill["file_path"] or ""
+
+    db_execute("DELETE FROM bills WHERE id = ?", (bill_id,), commit=True)
+
+    if file_path:
+        remaining = db_fetchone("SELECT COUNT(*) AS count FROM bills WHERE file_path = ?", (file_path,))
+        remaining_count = remaining["count"] if remaining else 0
+        if remaining_count == 0:
+            (UPLOAD_DIR / file_path).unlink(missing_ok=True)
+
     return bill
 
 
@@ -728,13 +801,52 @@ def parse_billing_month(value: str | None) -> datetime | None:
     return None
 
 
+def build_ring_chart(
+    items: list[dict[str, Any]],
+    colors: list[str],
+    value_key: str = "value",
+) -> dict[str, Any]:
+    if not items:
+        return {"style": "", "segments": []}
+
+    total = sum(float(item[value_key]) for item in items) or 1
+    start = 0.0
+    segments: list[dict[str, Any]] = []
+    style_parts: list[str] = []
+
+    for index, item in enumerate(items[:4]):
+        value = float(item[value_key])
+        percentage = (value / total) * 100
+        end = start + percentage
+        color = colors[index % len(colors)]
+        style_parts.append(f"{color} {start:.2f}% {end:.2f}%")
+        segments.append(
+            {
+                "label": item["label"],
+                "value": item[value_key],
+                "color": color,
+            }
+        )
+        start = end
+
+    if start < 100:
+        style_parts.append(f"#e5e7eb {start:.2f}% 100%")
+
+    return {
+        "style": f"conic-gradient({', '.join(style_parts)})",
+        "segments": segments,
+    }
+
+
 def build_dashboard_data(bills: list[Any], selected_year: str = "") -> dict[str, Any]:
     total_bills = len(bills)
     verified_bills = sum(1 for bill in bills if bill["review_status"] == "verified")
     total_amount = sum(float(bill["net_amount"] or 0) for bill in bills)
     total_units = sum(int(bill["units_consumed"] or 0) for bill in bills if bill["units_consumed"] is not None)
+    active_types = len({bill["bill_type"] for bill in bills if bill["bill_type"]})
 
     provider_counts = Counter((bill["provider"] or "Unknown") for bill in bills)
+    type_counts = Counter((display_bill_type(bill["bill_type"]) if bill["bill_type"] else "Not set") for bill in bills)
     status_counts = Counter((bill["review_status"] or "needs_review").replace("_", " ") for bill in bills)
     monthly_amounts: dict[str, float] = defaultdict(float)
     monthly_counts: dict[str, int] = defaultdict(int)
@@ -763,6 +875,14 @@ def build_dashboard_data(bills: list[Any], selected_year: str = "") -> dict[str,
             "width": (value / max(provider_counts.values())) * 100 if provider_counts else 0,
         }
         for label, value in provider_counts.most_common()
+    ]
+    type_chart = [
+        {
+            "label": label,
+            "value": value,
+            "width": (value / max(type_counts.values())) * 100 if type_counts else 0,
+        }
+        for label, value in type_counts.most_common()
     ]
     status_chart = [
         {
@@ -817,6 +937,15 @@ def build_dashboard_data(bills: list[Any], selected_year: str = "") -> dict[str,
         bills,
         key=lambda bill: parse_bill_date(bill["due_date"]) or datetime.max,
     )[:5]
+    top_amount_records = sorted(
+        bills,
+        key=lambda bill: float(bill["net_amount"] or 0),
+        reverse=True,
+    )[:5]
+
+    type_ring = build_ring_chart(type_chart, ["#facc15", "#ef4444", "#84cc16", "#38bdf8"])
+    status_ring = build_ring_chart(status_chart, ["#f59e0b", "#84cc16", "#d1d5db"])
+    provider_ring = build_ring_chart(provider_chart, ["#06b6d4", "#8b5cf6", "#facc15", "#94a3b8"])
 
     return {
         "metrics": {
@@ -825,7 +954,9 @@ def build_dashboard_data(bills: list[Any], selected_year: str = "") -> dict[str,
             "needs_review": total_bills - verified_bills,
             "total_amount": total_amount,
             "total_units": total_units,
+            "active_types": active_types,
         },
+        "type_chart": type_chart,
         "provider_chart": provider_chart,
         "status_chart": status_chart,
         "available_years": available_years,
@@ -833,6 +964,10 @@ def build_dashboard_data(bills: list[Any], selected_year: str = "") -> dict[str,
         "monthly_chart": monthly_chart,
         "yearly_chart": yearly_chart,
         "recent_due": recent_due,
+        "top_amount_records": top_amount_records,
+        "type_ring": type_ring,
+        "status_ring": status_ring,
+        "provider_ring": provider_ring,
     }
 
 
@@ -871,11 +1006,62 @@ def bill_has_content(bill: dict[str, Any]) -> bool:
         "billing_month",
         "due_date",
         "last_paid_date",
+        "notes",
         "raw_extracted_text",
     ]
     if any(str(bill.get(field, "")).strip() for field in meaningful_fields):
         return True
     return bill.get("units_consumed") is not None or bill.get("net_amount") is not None
+
+
+def build_library_data(
+    bills: list[Any],
+    search: str = "",
+    selected_type: str = "",
+    selected_status: str = "",
+) -> dict[str, Any]:
+    normalized_search = search.strip().lower()
+    normalized_type = normalize_bill_type(selected_type) if selected_type else ""
+    normalized_status = selected_status.strip().lower()
+
+    filtered: list[Any] = []
+    for bill in bills:
+        haystack = " ".join(
+            str(
+                bill.get(field, "") if isinstance(bill, dict) else bill[field]
+            )
+            for field in ["consumer_name", "provider", "service_number", "original_filename", "bill_type", "notes"]
+        ).lower()
+
+        bill_type = normalize_bill_type((bill.get("bill_type", "") if isinstance(bill, dict) else bill["bill_type"]) or "")
+        review_status = ((bill.get("review_status", "") if isinstance(bill, dict) else bill["review_status"]) or "").lower()
+
+        if normalized_search and normalized_search not in haystack:
+            continue
+        if normalized_type and bill_type != normalized_type:
+            continue
+        if normalized_status and review_status != normalized_status:
+            continue
+        filtered.append(bill)
+
+    available_types = sorted(
+        {normalize_bill_type((bill.get("bill_type", "") if isinstance(bill, dict) else bill["bill_type"]) or "") for bill in bills if (bill.get("bill_type", "") if isinstance(bill, dict) else bill["bill_type"])},
+        key=lambda item: display_bill_type(item),
+    )
+
+    total_amount = sum(float((bill.get("net_amount", 0) if isinstance(bill, dict) else bill["net_amount"]) or 0) for bill in filtered)
+
+    return {
+        "bills": filtered,
+        "filters": {
+            "search": search,
+            "bill_type": normalized_type,
+            "review_status": normalized_status,
+        },
+        "available_types": available_types,
+        "total_amount": total_amount,
+        "total_records": len(filtered),
+    }
 
 
 @app.route("/")
@@ -887,7 +1073,13 @@ def index() -> str:
 @app.route("/bills-table")
 def bills_table() -> str:
     bills = fetch_bills()
-    return render_template("bills_table.html", bills=bills)
+    library_data = build_library_data(
+        bills,
+        search=request.args.get("search", ""),
+        selected_type=request.args.get("bill_type", ""),
+        selected_status=request.args.get("review_status", ""),
+    )
+    return render_template("bills_table.html", bills=library_data["bills"], library=library_data)
 
 
 @app.route("/dashboard")
@@ -921,13 +1113,13 @@ def create_draft():
             if not extracted_text:
                 extracted_text = extract_scanned_pdf_text(stored_name)
                 if extracted_text:
-                    flash("The PDF is scanned, so OCR was used to draft the bill fields. Please review them carefully.")
+                    flash("The PDF is scanned, so OCR was used to draft the document fields. Please review them carefully.")
                 else:
                     flash("No readable text was found in the PDF, even after OCR.")
         elif not request.form.get("raw_extracted_text", "").strip():
             extracted_text = extract_image_text(stored_name)
             if extracted_text:
-                flash("Image OCR drafted the bill fields. Please review them carefully before saving.")
+                flash("Image OCR drafted the document fields. Please review them carefully before saving.")
             else:
                 flash("No readable text was found in the uploaded image.")
 
@@ -947,7 +1139,7 @@ def create_draft():
     bill["content_type"] = content_type
 
     if extracted_text and original_filename.lower().endswith(".pdf"):
-        flash("Imported the PDF and drafted the bill fields. Review them and then click Save bill.")
+        flash("Imported the PDF and drafted the document fields. Review them and then click Save record.")
 
     return render_template("index.html", bills=bills, bill=bill)
 
@@ -996,6 +1188,7 @@ def create_bill():
             bill["last_paid_date"],
             bill["units_consumed"],
             bill["net_amount"],
+            bill["notes"],
             bill["raw_extracted_text"],
             stored_name,
             original_name,
@@ -1005,7 +1198,7 @@ def create_bill():
             now,
         )
     )
-    flash("Bill saved. You can review or edit it anytime.")
+    flash("Record saved. You can review or edit it anytime.")
     return redirect(url_for("bill_detail", bill_id=inserted_id))
 
 
@@ -1025,7 +1218,7 @@ def bill_detail(bill_id: int):
             UPDATE bills
             SET provider = ?, bill_type = ?, consumer_name = ?, service_number = ?, area_code = ?,
                 mobile_number = ?, address = ?, bill_date = ?, billing_month = ?, due_date = ?,
-                last_paid_date = ?, units_consumed = ?, net_amount = ?, raw_extracted_text = ?,
+                last_paid_date = ?, units_consumed = ?, net_amount = ?, notes = ?, raw_extracted_text = ?,
                 review_status = ?, updated_at = ?
             WHERE id = ?
             """,
@@ -1043,6 +1236,7 @@ def bill_detail(bill_id: int):
                 updated["last_paid_date"],
                 updated["units_consumed"],
                 updated["net_amount"],
+                updated["notes"],
                 updated["raw_extracted_text"],
                 updated["review_status"],
                 now,
@@ -1054,6 +1248,20 @@ def bill_detail(bill_id: int):
         return redirect(url_for("bill_detail", bill_id=bill_id))
 
     return render_template("detail.html", bill=bill)
+
+
+@app.post("/bills/<int:bill_id>/delete")
+def delete_bill(bill_id: int):
+    bill = delete_bill_record(bill_id)
+    flash(f"Deleted record #{bill_id}.")
+    return redirect(
+        url_for(
+            "bills_table",
+            search=request.form.get("search", "").strip(),
+            bill_type=request.form.get("bill_type", "").strip(),
+            review_status=request.form.get("review_status", "").strip(),
+        )
+    )
 
 
 @app.route("/uploads/<path:filename>")

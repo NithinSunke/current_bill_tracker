@@ -19,7 +19,23 @@ BILL_FIELDS = [
     "last_paid_date",
     "units_consumed",
     "net_amount",
+    "notes",
 ]
+
+
+BILL_TYPE_KEYWORDS = {
+    "electricity": ["electricity", "current bill", "eb bill", "power bill", "tgspdcl", "tgnpdcl"],
+    "water": ["water bill", "water charges", "water tax", "water supply"],
+    "gas": ["gas bill", "lpg", "indane", "bharat gas", "hp gas"],
+    "internet": ["broadband", "fiber", "internet bill", "wifi bill", "airtel xstream", "jiofiber"],
+    "mobile": ["postpaid", "mobile bill", "wireless bill", "telecom", "recharge"],
+    "rent": ["rent receipt", "rent paid", "tenant", "landlord", "lease"],
+    "insurance": ["insurance", "premium", "policy number", "sum assured"],
+    "school_fee": ["tuition fee", "school fee", "semester fee", "admission fee", "student id"],
+    "maintenance": ["maintenance", "society maintenance", "association dues"],
+    "loan": ["emi", "loan account", "repayment schedule", "installment due"],
+    "credit_card": ["credit card", "statement date", "total due", "minimum due"],
+}
 
 
 def _capture(pattern: str, raw_text: str, flags: int = re.IGNORECASE) -> str:
@@ -49,9 +65,9 @@ def _capture_best(pattern: str, raw_text: str, scorer, flags: int = re.IGNORECAS
 def _score_service_candidate(value: str) -> tuple[int, int, int]:
     digits = _normalize_digit_string(value)
     return (
-        -(abs(len(digits) - 9)),
+        -(abs(len(digits or value) - 10)),
         digits.count("0"),
-        len(digits),
+        len(digits or value),
     )
 
 
@@ -214,6 +230,14 @@ def _detect_provider(raw_text: str) -> str:
     return ""
 
 
+def _detect_bill_type(raw_text: str, filename: str = "") -> str:
+    haystack = f"{raw_text}\n{filename}".lower()
+    for bill_type, keywords in BILL_TYPE_KEYWORDS.items():
+        if any(keyword in haystack for keyword in keywords):
+            return bill_type
+    return ""
+
+
 def _normalize_name(value: str) -> str:
     cleaned = re.sub(r"[^A-Z .]", "", value.upper()).strip()
     cleaned = re.sub(r"\s+", " ", cleaned)
@@ -364,12 +388,16 @@ def build_bill_draft(raw_text: str, filename: str = "") -> dict[str, Any]:
     lower_filename = filename.lower()
 
     draft["provider"] = _detect_provider(normalized)
-    if "ELECTRICITY" in upper_text or "current" in lower_filename or "bill" in lower_filename:
-        draft["bill_type"] = "electricity"
+    draft["bill_type"] = _detect_bill_type(normalized, lower_filename)
+    if not draft["bill_type"] and ("bill" in lower_filename or "invoice" in lower_filename):
+        draft["bill_type"] = "other"
 
-    draft["consumer_name"] = _capture(r"(?:Consumer\s*Name|Name)\s*[:\-]?\s*([^\n]+)", normalized)
+    draft["consumer_name"] = _capture(
+        r"(?:Consumer\s*Name|Customer\s*Name|Subscriber\s*Name|Tenant\s*Name|Student\s*Name|Insured\s*Name|Name)\s*[:\-]?\s*([^\n]+)",
+        normalized,
+    )
     draft["service_number"] = _capture_best(
-        r"(?:USC\s*No\.?|USC|Service\s*No\.?|Service\s*Number)\s*[:\-]?\s*([A-Z0-9]{6,12})",
+        r"(?:USC\s*No\.?|USC|Service\s*No\.?|Service\s*Number|Account\s*No\.?|Account\s*Number|Customer\s*ID|Consumer\s*No\.?|Connection\s*No\.?|Policy\s*No\.?|Loan\s*Account|Member\s*ID|Invoice\s*No\.?)\s*[:\-]?\s*([A-Z0-9\-]{5,20})",
         normalized,
         scorer=_score_service_candidate,
     )
@@ -394,13 +422,22 @@ def build_bill_draft(raw_text: str, filename: str = "") -> dict[str, Any]:
     if sc_area_code and not draft["area_code"]:
         draft["area_code"] = sc_area_code
     draft["mobile_number"] = _capture(r"(?:Mobile|Mob(?:ile)?)\s*(?:No\.?)?\s*[:\-]?\s*([0-9]{10})", normalized)
-    draft["bill_date"] = _capture(r"(?:Bill\s*Date|Bill\s*Dt|Dt)\s*[:\-]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", normalized)
-    draft["billing_month"] = _capture(r"(?:Bill Month|Month)\s*[:\-]?\s*([0-9]{2}[/-][0-9]{4})", normalized)
-    draft["due_date"] = _capture(r"Due\s*(?:Date)?\s*[:\-]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", normalized)
+    draft["bill_date"] = _capture(
+        r"(?:Bill\s*Date|Bill\s*Dt|Invoice\s*Date|Receipt\s*Date|Statement\s*Date|Dt)\s*[:\-]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})",
+        normalized,
+    )
+    draft["billing_month"] = _capture(r"(?:Bill Month|Billing Month|Month)\s*[:\-]?\s*([0-9]{2}[/-][0-9]{4})", normalized)
+    draft["due_date"] = _capture(
+        r"(?:Due\s*Date|Payment\s*Due|Due\s*On|Last\s*Date)\s*[:\-]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})",
+        normalized,
+    )
     draft["last_paid_date"] = _capture(r"Last Paid D[ta]\s*[:\-]?\s*([0-9]{2}[/-][0-9]{2}[/-][0-9]{4})", normalized)
-    draft["units_consumed"] = _capture(r"(?:Units|Consumption|Consumed)\s*[:\-]?\s*([0-9]{1,6})", normalized)
+    draft["units_consumed"] = _capture(
+        r"(?:Units|Consumption|Consumed|Usage|Data Used|Reading)\s*[:\-]?\s*([0-9]{1,6})",
+        normalized,
+    )
     amount_candidate = _capture_best(
-        r"(?:Total\s*Due|Net\s*Amount|Netamount|Bill\s*Amount|Amount Due)\s*[:\-]?\s*([0-9]+(?:\.[0-9]{1,2})?)",
+        r"(?:Total\s*Due|Net\s*Amount|Netamount|Bill\s*Amount|Amount Due|Payable Amount|Grand Total|Rent Amount|Premium Amount|Fee Amount)\s*[:\-]?\s*([0-9]+(?:\.[0-9]{1,2})?)",
         normalized,
         scorer=lambda value: (
             "Total Due" in normalized,

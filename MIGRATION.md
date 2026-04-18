@@ -1,57 +1,128 @@
 # Migration Guide
 
-This guide explains how to move the Current Bill Tracker app to another server
-with its data.
+This guide explains how to migrate **All Bills Tracker** to another server with
+its application data.
 
-## What needs to move
+## What must be migrated
 
-For this Docker setup, there are three kinds of data:
+This app stores data in three places when running with Docker:
 
-- PostgreSQL bill records
-- uploaded bill files stored in `/app/uploads`
-- app instance data stored in `/app/instance`
+- PostgreSQL bill and document records
+- uploaded files in `/app/uploads`
+- app instance data in `/app/instance`
 
 You also need the application code itself.
 
 ## Current Docker setup
 
-The app currently uses these Docker volumes:
+The Docker stack uses:
+
+- `app`: Flask app
+- `db`: PostgreSQL 16
+
+Named Docker volumes:
 
 - `postgres_data`
 - `uploads_data`
 - `app_instance`
 
-## Recommended migration approach
+The app port is currently:
 
-Use logical database export plus file archives:
+```text
+5000
+```
 
-1. copy the project folder to the new server
-2. export PostgreSQL data from the old server
-3. archive uploaded files and app instance files
-4. start the app on the new server
-5. restore database and files
-6. verify the app
+## Recommended migration method
 
-This approach is portable and safer than copying raw database internals between
-different Docker hosts.
+Use:
 
-## Before you start
+1. logical PostgreSQL export
+2. file archive backup for uploads and instance data
+3. project folder copy
 
-On the old server, confirm the app is healthy:
+This is safer and more portable than copying raw Docker volume internals
+between hosts.
+
+## Migration overview
+
+On the old server:
+
+1. verify the containers are healthy
+2. create backups
+3. copy the project and backup files to the new server
+
+On the new server:
+
+1. start the Docker stack
+2. restore uploads
+3. restore app instance data
+4. restore the database
+5. verify the app
+
+## Before starting
+
+Run from the project directory:
+
+```bash
+cd /home/opc/current_bill_tracker
+```
+
+Check the running containers:
 
 ```bash
 docker compose -f docker/docker-compose.yml ps
 ```
 
-Create a folder for migration artifacts:
+Create a migration folder if it does not exist:
 
 ```bash
 mkdir -p migration
 ```
 
-## Step 1: Back up the database
+## Quick automated option
 
-Run from the project directory:
+Instead of running each backup or restore command manually, you can use the
+provided scripts from the project root:
+
+### Create backups
+
+Data-only backup:
+
+```bash
+./backup.sh
+```
+
+Full schema plus data backup:
+
+```bash
+./backup.sh --full
+```
+
+### Restore backups
+
+Auto-detect backup file:
+
+```bash
+./restore.sh
+```
+
+Force data-only restore:
+
+```bash
+./restore.sh --data-only
+```
+
+Force full backup restore:
+
+```bash
+./restore.sh --full
+```
+
+## Step 1: Back up PostgreSQL
+
+### Option A: data-only backup
+
+Recommended if the destination app already has the same schema version.
 
 ```bash
 docker compose -f docker/docker-compose.yml exec -T db \
@@ -59,7 +130,9 @@ docker compose -f docker/docker-compose.yml exec -T db \
   > migration/bill_tracker_data.sql
 ```
 
-If you want schema plus data in one file, use this instead:
+### Option B: full schema plus data backup
+
+Useful if you want one single SQL file containing both schema and data.
 
 ```bash
 docker compose -f docker/docker-compose.yml exec -T db \
@@ -67,7 +140,7 @@ docker compose -f docker/docker-compose.yml exec -T db \
   > migration/bill_tracker_full.sql
 ```
 
-## Step 2: Back up uploaded files
+## Step 2: Back up uploaded source files
 
 ```bash
 docker compose -f docker/docker-compose.yml exec -T app \
@@ -77,7 +150,7 @@ docker compose -f docker/docker-compose.yml exec -T app \
 
 ## Step 3: Back up app instance data
 
-This may include OCR cache and other app-side state:
+This usually contains OCR cache and other local runtime state.
 
 ```bash
 docker compose -f docker/docker-compose.yml exec -T app \
@@ -93,25 +166,26 @@ Example with `rsync`:
 rsync -av /home/opc/current_bill_tracker/ user@NEW_SERVER:/home/opc/current_bill_tracker/
 ```
 
-If you already copied the project separately, make sure at least these files are
-present on the new server:
+At minimum, make sure the new server receives:
 
-- `docker/docker-compose.yml`
-- `docker/Dockerfile`
+- application code
+- `docker/`
 - `requirements.txt`
-- `app.py`
-- `bill_tracker/`
-- `templates/`
-- `static/`
-- `migration/bill_tracker_data.sql`
+- `migration/bill_tracker_data.sql` or `migration/bill_tracker_full.sql`
 - `migration/uploads.tar.gz`
 - `migration/app_instance.tar.gz`
 
 ## Step 5: Prepare the new server
 
-Install Docker and Docker Compose first.
+Install Docker and Docker Compose on the new server first.
 
-Then from the project directory on the new server:
+Then go to the project directory:
+
+```bash
+cd /home/opc/current_bill_tracker
+```
+
+Start the stack:
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d --build
@@ -137,31 +211,31 @@ cat migration/app_instance.tar.gz | docker compose -f docker/docker-compose.yml 
   sh -lc 'cd /app/instance && tar xzf -'
 ```
 
-## Step 8: Restore the database
+## Step 8: Restore PostgreSQL
 
-If you created the data-only backup:
+### If you created the data-only backup
 
 ```bash
 cat migration/bill_tracker_data.sql | docker compose -f docker/docker-compose.yml exec -T db \
   psql -U bill_user -d bill_tracker
 ```
 
-If you created the full backup instead:
+### If you created the full backup
 
 ```bash
 cat migration/bill_tracker_full.sql | docker compose -f docker/docker-compose.yml exec -T db \
   psql -U bill_user -d bill_tracker
 ```
 
-## Step 9: Restart the app
+## Step 9: Restart the app container
 
 ```bash
 docker compose -f docker/docker-compose.yml restart app
 ```
 
-## Step 10: Verify migration
+## Step 10: Verify the migration
 
-Check containers:
+Check container status:
 
 ```bash
 docker compose -f docker/docker-compose.yml ps
@@ -174,29 +248,31 @@ docker compose -f docker/docker-compose.yml logs --tail=100 app
 docker compose -f docker/docker-compose.yml logs --tail=100 db
 ```
 
-Open the app in a browser:
+Open the app:
 
 ```text
 http://SERVER_IP:5000
 ```
 
-Verify:
+Verify the following:
 
-- bills table shows existing records
-- uploaded bill links open correctly
-- dashboard totals look correct
-- OCR imports still work
+- the Workspace page opens
+- the Library page shows existing records
+- uploaded file source links work
+- the Dashboard shows totals and charts
+- OCR import still works
+- manual records are still editable
 
-## Network and firewall notes
+## Firewall and network checks
 
-If the new server should be reachable from another machine:
+If the new server must be accessible from another machine:
 
-- allow inbound port `5000`
-- open the same port in cloud security lists or firewall rules
+- allow inbound TCP port `5000`
+- update cloud security lists, security groups, or firewall rules
 
-If you want to serve the app on a different port, update:
+If you want a different external port, edit:
 
-- `docker/docker-compose.yml`
+- [docker/docker-compose.yml](/home/opc/current_bill_tracker/docker/docker-compose.yml)
 
 Example:
 
@@ -205,7 +281,7 @@ ports:
   - "8080:5000"
 ```
 
-Then the app will be available at:
+Then open:
 
 ```text
 http://SERVER_IP:8080
@@ -213,22 +289,24 @@ http://SERVER_IP:8080
 
 ## Recommended production changes after migration
 
-Before exposing the app publicly, update:
+Before using the new server publicly, update:
 
-- PostgreSQL password
-- Flask `SECRET_KEY`
-- reverse proxy and TLS if needed
+- `POSTGRES_PASSWORD`
+- `SECRET_KEY`
+- reverse proxy configuration if needed
+- TLS or HTTPS setup if needed
 
-## Quick rollback plan
+## Rollback plan
 
-If something looks wrong on the new server:
+If something looks wrong after restore:
 
-1. stop the new containers
+1. stop the new stack
 2. keep the old server running
-3. inspect restore logs
+3. inspect `app` and `db` logs on the new server
 4. restore again from the same migration artifacts
 
-## Optional: volume-level backup instead of logical export
+## Optional alternative: volume-level backups
 
-You can also back up Docker volumes directly, but logical PostgreSQL export is
-the better default for portability.
+You can back up Docker volumes directly, but this guide prefers logical SQL
+export plus file archives because it is easier to move safely between servers
+and Docker hosts.

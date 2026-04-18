@@ -1,96 +1,148 @@
 {% extends "base.html" %}
 
-{% block title %}Upload Bill | Current Bill Tracker{% endblock %}
+{% block title %}Workspace | {{ app_name }}{% endblock %}
+{% block body_class %}page-home{% endblock %}
 
 {% block content %}
-  <section class="hero card">
-    <div>
-      <p class="eyebrow">Bills in one place</p>
-      <h1>Upload a bill or enter it manually, then save it locally.</h1>
-      <p class="lede">
-        This first version stores the original PDF or image on disk and keeps the bill record in SQLite.
-        You can also skip the upload and type the bill details yourself, or paste OCR text and notes to prefill fields.
-      </p>
-    </div>
-  </section>
+  <div class="workspace-page">
+    <section class="workspace-hero card">
+      <div class="workspace-hero-main">
+        <p class="eyebrow">Home Workspace</p>
+        <h1>Capture every bill fast, review the details, and keep your records organized.</h1>
+        <p class="lede">
+          Use one clean workspace for electricity, water, gas, internet, rent, insurance, school fees, and more.
+          Upload a PDF or image when available, or skip upload and enter the details manually.
+        </p>
+        <div class="hero-pills">
+          <span>OCR drafting</span>
+          <span>Manual entry</span>
+          <span>Document library</span>
+          <span>Analytics dashboard</span>
+        </div>
+      </div>
 
-  <section class="grid">
-    <article class="card form-card">
-      <h2>Create bill record</h2>
-      <form action="{{ url_for('create_bill') }}" method="post" enctype="multipart/form-data" class="bill-form">
-        <label>
-          Bill file
-          <input type="file" name="bill_file" accept=".pdf,.png,.jpg,.jpeg,.webp">
-        </label>
+      <div class="workspace-hero-side">
+        <article class="workspace-stat-card">
+          <span class="workspace-stat-label">Recent records</span>
+          <strong>{{ bills|length }}</strong>
+          <p>Visible in the current workspace panel.</p>
+        </article>
+        <article class="workspace-stat-card accent">
+          <span class="workspace-stat-label">Best flow</span>
+          <strong>Import, review, save</strong>
+          <p>Upload optional. Manual-first entry still works end to end.</p>
+        </article>
+      </div>
+    </section>
 
+    <section class="workspace-strip">
+      <article class="workspace-mini-card">
+        <span>Supported types</span>
+        <strong>Multi-bill</strong>
+        <p>Electricity, water, gas, mobile, rent, insurance, school fee, and more.</p>
+      </article>
+      <article class="workspace-mini-card">
+        <span>Draft source</span>
+        <strong>OCR + notes</strong>
+        <p>Paste text or import scanned files to prefill missing form fields.</p>
+      </article>
+      <article class="workspace-mini-card">
+        <span>After saving</span>
+        <strong>Library + dashboard</strong>
+        <p>Open records later, delete them, and monitor totals from the dashboard.</p>
+      </article>
+    </section>
+
+    <section class="workspace-grid">
+      <article class="card form-card workspace-form-card">
+      <div class="workspace-card-head">
+        <div>
+          <p class="eyebrow">Create Record</p>
+          <h2>Add a bill or payment document</h2>
+        </div>
         <div class="upload-note">
           {% if bill.original_filename %}
-            <strong>Imported file:</strong> {{ bill.original_filename }}
+            <strong>Imported:</strong> {{ bill.original_filename }}
           {% else %}
-            Upload is optional. You can use <strong>Import and draft</strong> when you have a PDF or image, or fill the form manually and save it directly.
+            Start with upload for OCR drafting, or fill the form directly for a manual record.
           {% endif %}
         </div>
+      </div>
 
+      <form action="{{ url_for('create_bill') }}" method="post" enctype="multipart/form-data" class="bill-form">
         <input type="hidden" name="file_path" value="{{ bill.file_path or '' }}">
         <input type="hidden" name="original_filename" value="{{ bill.original_filename or '' }}">
         <input type="hidden" name="content_type" value="{{ bill.content_type or '' }}">
 
+        <p class="form-section-title full">Source</p>
         <label class="full">
-          OCR text or notes
-          <textarea name="raw_extracted_text" rows="6" placeholder="Paste text from OCR here if you have it. Missing fields will be drafted automatically where possible.">{{ bill.raw_extracted_text or '' }}</textarea>
+          Bill file
+          <input type="file" name="bill_file" accept=".pdf,.png,.jpg,.jpeg,.webp">
+        </label>
+        <label class="full">
+          OCR text or import notes
+          <textarea name="raw_extracted_text" rows="6" placeholder="Paste OCR text, copied bill text, or quick notes here. The app will draft missing fields where possible.">{{ bill.raw_extracted_text or '' }}</textarea>
         </label>
 
-        <label>
-          Provider
-          <input type="text" name="provider" value="{{ bill.provider }}">
-        </label>
+        <p class="form-section-title full">Document details</p>
         <label>
           Bill type
-          <input type="text" name="bill_type" value="{{ bill.bill_type }}" placeholder="electricity">
+          <input list="bill-type-options" name="bill_type" value="{{ bill.bill_type or '' }}" placeholder="electricity, water, rent, insurance">
+          <datalist id="bill-type-options">
+            {% for option in bill_type_options %}
+              <option value="{{ option }}">{{ display_bill_type(option) }}</option>
+            {% endfor %}
+          </datalist>
         </label>
         <label>
-          Consumer name
-          <input type="text" name="consumer_name" value="{{ bill.consumer_name }}">
+          Provider or issuer
+          <input type="text" name="provider" value="{{ bill.provider or '' }}" placeholder="TGSPDCL, Airtel, landlord, school name">
         </label>
         <label>
-          Service number
-          <input type="text" name="service_number" value="{{ bill.service_number }}">
+          Customer or account name
+          <input type="text" name="consumer_name" value="{{ bill.consumer_name or '' }}" placeholder="Person, tenant, student, or account holder">
         </label>
         <label>
-          Area code
-          <input type="text" name="area_code" value="{{ bill.area_code }}">
+          Account or service number
+          <input type="text" name="service_number" value="{{ bill.service_number or '' }}" placeholder="Account no, USC, policy no, invoice no">
         </label>
         <label>
-          Mobile number
-          <input type="text" name="mobile_number" value="{{ bill.mobile_number }}">
+          Reference or area code
+          <input type="text" name="area_code" value="{{ bill.area_code or '' }}" placeholder="Optional supporting code">
+        </label>
+        <label>
+          Contact number
+          <input type="text" name="mobile_number" value="{{ bill.mobile_number or '' }}" placeholder="Optional phone number">
         </label>
         <label class="full">
-          Address
-          <textarea name="address" rows="3">{{ bill.address }}</textarea>
+          Address or location
+          <textarea name="address" rows="3" placeholder="Service address, rented property, branch, or billing location">{{ bill.address or '' }}</textarea>
         </label>
+
+        <p class="form-section-title full">Dates and amount</p>
         <label>
           Bill date
-          <input type="text" name="bill_date" value="{{ bill.bill_date }}" placeholder="dd/mm/yyyy">
+          <input type="text" name="bill_date" value="{{ bill.bill_date or '' }}" placeholder="dd/mm/yyyy">
         </label>
         <label>
           Billing month
-          <input type="text" name="billing_month" value="{{ bill.billing_month }}" placeholder="mm/yyyy">
+          <input type="text" name="billing_month" value="{{ bill.billing_month or '' }}" placeholder="mm/yyyy">
         </label>
         <label>
           Due date
-          <input type="text" name="due_date" value="{{ bill.due_date }}" placeholder="dd/mm/yyyy">
+          <input type="text" name="due_date" value="{{ bill.due_date or '' }}" placeholder="dd/mm/yyyy">
         </label>
         <label>
           Last paid date
-          <input type="text" name="last_paid_date" value="{{ bill.last_paid_date }}" placeholder="dd/mm/yyyy">
+          <input type="text" name="last_paid_date" value="{{ bill.last_paid_date or '' }}" placeholder="dd/mm/yyyy">
         </label>
         <label>
-          Units consumed
-          <input type="number" name="units_consumed" value="{{ bill.units_consumed or '' }}">
+          Usage or units
+          <input type="number" name="units_consumed" value="{{ bill.units_consumed or '' }}" placeholder="Optional">
         </label>
         <label>
-          Net amount
-          <input type="number" step="0.01" name="net_amount" value="{{ bill.net_amount or '' }}">
+          Amount
+          <input type="number" step="0.01" name="net_amount" value="{{ bill.net_amount or '' }}" placeholder="0.00">
         </label>
         <label>
           Review status
@@ -99,37 +151,71 @@
             <option value="verified" {% if bill.review_status == 'verified' %}selected{% endif %}>Verified</option>
           </select>
         </label>
+        <label class="full">
+          Notes
+          <textarea name="notes" rows="4" placeholder="Add context like flat number, plan type, premium cycle, payment remarks, or anything useful later.">{{ bill.notes or '' }}</textarea>
+        </label>
 
         <div class="actions full">
           <button type="submit" formaction="{{ url_for('create_draft') }}" formmethod="post">Import and draft</button>
-          <button type="submit">Save bill</button>
+          <button type="submit" class="button-secondary">Save record</button>
         </div>
       </form>
-    </article>
+      </article>
 
-    <article class="card">
-      <div class="section-heading">
-        <h2>Recent bills</h2>
-        <a class="section-link" href="{{ url_for('bills_table') }}">View all</a>
-      </div>
-      {% if bills %}
-        <div class="bill-list">
-          {% for saved in bills %}
-            <a class="bill-row" href="{{ url_for('bill_detail', bill_id=saved.id) }}">
-              <div>
-                <strong>{{ saved.consumer_name or saved.original_filename or 'Manual entry' }}</strong>
-                <p>{{ saved.provider or 'Provider not set' }}</p>
-              </div>
-              <div class="bill-meta">
-                <span>{{ saved.bill_type or 'bill' }}</span>
-                <span>{{ "%.2f"|format(saved.net_amount or 0) }}</span>
-              </div>
-            </a>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="empty-state">No bills yet. Upload a bill or add your first manual entry to start building the tracker.</p>
-      {% endif %}
-    </article>
-  </section>
+      <aside class="workspace-sidebar">
+        <article class="card workspace-side-card">
+          <div class="workspace-card-head compact">
+            <div>
+              <p class="eyebrow">Quick Start</p>
+              <h2>Best way to use this page</h2>
+            </div>
+          </div>
+          <div class="workspace-steps">
+            <div class="workspace-step">
+              <span>1</span>
+              <p>Upload a file if you want OCR extraction, or leave upload empty for manual entry.</p>
+            </div>
+            <div class="workspace-step">
+              <span>2</span>
+              <p>Use Import and draft to prefill fields from OCR text before you save.</p>
+            </div>
+            <div class="workspace-step">
+              <span>3</span>
+              <p>Open the Library to manage records and the Dashboard to review totals and due items.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="card workspace-side-card">
+          <div class="workspace-card-head compact">
+            <div>
+              <p class="eyebrow">Recent Records</p>
+              <h2>Latest saved entries</h2>
+            </div>
+            <a class="section-link" href="{{ url_for('bills_table') }}">View all</a>
+          </div>
+          {% if bills %}
+            <div class="bill-list">
+              {% for saved in bills %}
+                <a class="bill-row" href="{{ url_for('bill_detail', bill_id=saved.id) }}">
+                  <div>
+                    <span class="mini-tag">{{ display_bill_type(saved.bill_type) }}</span>
+                    <strong>{{ saved.consumer_name or saved.original_filename or 'Manual entry' }}</strong>
+                    <p>{{ saved.provider or 'Provider not set' }}</p>
+                  </div>
+                  <div class="bill-meta">
+                    <span>{{ saved.due_date or 'No due date' }}</span>
+                    <span>{{ "%.2f"|format(saved.net_amount or 0) if saved.net_amount is not none else 'Not set' }}</span>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty-state">No records yet. Start with an upload or create a manual entry for any bill type.</p>
+          {% endif %}
+        </article>
+      </aside>
+    </section>
+  </div>
 {% endblock %}

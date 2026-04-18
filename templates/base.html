@@ -3,25 +3,26 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Current Bill Tracker{% endblock %}</title>
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   </head>
-  <body>
-    <header class="site-header">
-      <div class="shell header-inner">
-        <div>
-          <p class="eyebrow">Local MVP</p>
-          <a class="brand" href="{{ url_for('index') }}">Current Bill Tracker</a>
+  <body class="{% block body_class %}{% endblock %}">
+    <div class="page-backdrop"></div>
+    <header class="site-header shell">
+      <div class="header-inner glass-panel">
+        <div class="brand-wrap">
+          <p class="eyebrow">All household documents in one workspace</p>
+          <a class="brand" href="{{ url_for('index') }}">{{ app_name }}</a>
         </div>
         <nav class="nav">
-          <a href="{{ url_for('dashboard') }}">Dashboard</a>
-          <a href="{{ url_for('index') }}">Upload</a>
-          <a href="{{ url_for('bills_table') }}">Bills Table</a>
+          <a class="{% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">Workspace</a>
+          <a class="{% if request.endpoint == 'dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Dashboard</a>
+          <a class="{% if request.endpoint == 'bills_table' %}active{% endif %}" href="{{ url_for('bills_table') }}">Library</a>
         </nav>
       </div>
     </header>
 
-    <main class="shell">
+    <main class="shell page-shell">
       {% with messages = get_flashed_messages() %}
         {% if messages %}
           <section class="flash-stack">

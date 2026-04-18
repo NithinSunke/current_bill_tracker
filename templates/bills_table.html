@@ -1,69 +1,84 @@
 {% extends "base.html" %}
 
-{% block title %}Bills Table | Current Bill Tracker{% endblock %}
+{% block title %}Library | {{ app_name }}{% endblock %}
 
 {% block content %}
-  <section class="hero card">
-    <div>
-      <p class="eyebrow">Bills overview</p>
-      <h1>All saved bills in one table.</h1>
-      <p class="lede">
-        Review imported bill records, compare key details quickly, and open any row for full editing.
-      </p>
-    </div>
-  </section>
-
-  <section class="card table-card">
-    <div class="section-heading">
-      <h2>Saved bills</h2>
-      <p>{{ bills|length }} total</p>
+  <section class="library-shell card">
+    <div class="library-head">
+      <div>
+        <p class="eyebrow">Library</p>
+        <h1>Document Library</h1>
       </div>
+      <a class="library-add" href="{{ url_for('index') }}">Add Record</a>
+    </div>
+
+    <form method="get" class="library-toolbar">
+      <input type="text" name="search" value="{{ library.filters.search }}" placeholder="Search name, provider, account no">
+      <select name="bill_type">
+        <option value="">All types</option>
+        {% for option in library.available_types %}
+          <option value="{{ option }}" {% if option == library.filters.bill_type %}selected{% endif %}>{{ display_bill_type(option) }}</option>
+        {% endfor %}
+      </select>
+      <select name="review_status">
+        <option value="">All statuses</option>
+        <option value="needs_review" {% if library.filters.review_status == 'needs_review' %}selected{% endif %}>Needs review</option>
+        <option value="verified" {% if library.filters.review_status == 'verified' %}selected{% endif %}>Verified</option>
+      </select>
+      <button type="submit" class="library-filter-btn">Apply</button>
+    </form>
 
     {% if bills %}
-      <div class="table-wrap">
-        <table class="bills-table">
+      <div class="library-table-wrap">
+        <table class="library-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Consumer</th>
-              <th>Provider</th>
-              <th>Service No</th>
-              <th>Area Code</th>
-              <th>Bill Date</th>
-              <th>Due Date</th>
-              <th>Units</th>
-              <th>Net Amount</th>
-              <th>Status</th>
+              <th>Name</th>
+              <th>Amount</th>
+              <th>Category</th>
+              <th>Date</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {% for bill in bills %}
               <tr>
-                <td>{{ bill.id }}</td>
-                <td>{{ bill.consumer_name or bill.original_filename or 'Manual entry' }}</td>
-                <td>{{ bill.provider or 'Not set' }}</td>
-                <td>{{ bill.service_number or 'Not set' }}</td>
-                <td>{{ bill.area_code or 'Not set' }}</td>
-                <td>{{ bill.bill_date or 'Not set' }}</td>
-                <td>{{ bill.due_date or 'Not set' }}</td>
-                <td>{{ bill.units_consumed or 'Not set' }}</td>
-                <td>{{ "%.2f"|format(bill.net_amount or 0) if bill.net_amount is not none else 'Not set' }}</td>
                 <td>
-                  <span class="status-pill {% if bill.review_status == 'verified' %}verified{% endif %}">
-                    {{ bill.review_status.replace('_', ' ') }}
-                  </span>
+                  <strong>{{ bill.consumer_name or bill.original_filename or 'Manual entry' }}</strong>
+                  <div class="library-subtext">{{ bill.provider or 'Provider not set' }}</div>
                 </td>
+                <td>{{ "%.2f"|format(bill.net_amount or 0) if bill.net_amount is not none else 'Not set' }}</td>
+                <td>{{ display_bill_type(bill.bill_type) }}</td>
+                <td>{{ bill.bill_date or bill.due_date or 'Not set' }}</td>
                 <td>
-                  <a class="table-link" href="{{ url_for('bill_detail', bill_id=bill.id) }}">Open</a>
+                  <div class="library-actions">
+                    <a class="table-link action-link" href="{{ url_for('bill_detail', bill_id=bill.id) }}">Open</a>
+                    {% if bill.file_path and bill.original_filename %}
+                      <a class="table-link action-link secondary" href="{{ url_for('uploaded_file', filename=bill.file_path) }}" target="_blank" rel="noreferrer">Source</a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('delete_bill', bill_id=bill.id) }}" class="inline-action-form" onsubmit="return confirm('Delete this record?');">
+                      <input type="hidden" name="search" value="{{ library.filters.search }}">
+                      <input type="hidden" name="bill_type" value="{{ library.filters.bill_type }}">
+                      <input type="hidden" name="review_status" value="{{ library.filters.review_status }}">
+                      <button type="submit" class="action-link delete-link">Delete</button>
+                    </form>
+                  </div>
                 </td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+
+      <div class="library-summary">
+        <div class="library-total">Total: {{ "%.2f"|format(library.total_amount) }}</div>
+        <div class="library-summary-right">
+          <span>Filtered records</span>
+          <strong>{{ library.total_records }}</strong>
+        </div>
+      </div>
     {% else %}
-      <p class="empty-state">No saved bills yet. Import a bill or save a manual entry, then this table will list every record here.</p>
+      <p class="empty-state">No matching records found. Try changing the filters or add a new bill from the workspace.</p>
     {% endif %}
   </section>
 {% endblock %}
