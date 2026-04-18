@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Bill #{{ bill.id }} | Current Bill Tracker{% endblock %}
+
+{% block content %}
+  <section class="grid detail-grid">
+    <article class="card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Saved record</p>
+          <h1>Bill #{{ bill.id }}</h1>
+        </div>
+        <span class="status-pill">{{ bill.review_status.replace('_', ' ') }}</span>
+      </div>
+
+      <dl class="meta-grid">
+        <div>
+          <dt>Original file</dt>
+          <dd>
+            {% if bill.file_path and bill.original_filename %}
+              <a href="{{ url_for('uploaded_file', filename=bill.file_path) }}" target="_blank" rel="noreferrer">{{ bill.original_filename }}</a>
+            {% else %}
+              Manual entry
+            {% endif %}
+          </dd>
+        </div>
+        <div>
+          <dt>Uploaded</dt>
+          <dd>{{ bill.created_at }}</dd>
+        </div>
+        <div>
+          <dt>Last updated</dt>
+          <dd>{{ bill.updated_at }}</dd>
+        </div>
+      </dl>
+    </article>
+
+    <article class="card form-card">
+      <h2>Review and edit</h2>
+      <form action="{{ url_for('bill_detail', bill_id=bill.id) }}" method="post" class="bill-form">
+        <label>
+          Provider
+          <input type="text" name="provider" value="{{ bill.provider or '' }}">
+        </label>
+        <label>
+          Bill type
+          <input type="text" name="bill_type" value="{{ bill.bill_type or '' }}">
+        </label>
+        <label>
+          Consumer name
+          <input type="text" name="consumer_name" value="{{ bill.consumer_name or '' }}">
+        </label>
+        <label>
+          Service number
+          <input type="text" name="service_number" value="{{ bill.service_number or '' }}">
+        </label>
+        <label>
+          Area code
+          <input type="text" name="area_code" value="{{ bill.area_code or '' }}">
+        </label>
+        <label>
+          Mobile number
+          <input type="text" name="mobile_number" value="{{ bill.mobile_number or '' }}">
+        </label>
+        <label class="full">
+          Address
+          <textarea name="address" rows="3">{{ bill.address or '' }}</textarea>
+        </label>
+        <label>
+          Bill date
+          <input type="text" name="bill_date" value="{{ bill.bill_date or '' }}">
+        </label>
+        <label>
+          Billing month
+          <input type="text" name="billing_month" value="{{ bill.billing_month or '' }}">
+        </label>
+        <label>
+          Due date
+          <input type="text" name="due_date" value="{{ bill.due_date or '' }}">
+        </label>
+        <label>
+          Last paid date
+          <input type="text" name="last_paid_date" value="{{ bill.last_paid_date or '' }}">
+        </label>
+        <label>
+          Units consumed
+          <input type="number" name="units_consumed" value="{{ bill.units_consumed or '' }}">
+        </label>
+        <label>
+          Net amount
+          <input type="number" step="0.01" name="net_amount" value="{{ bill.net_amount or '' }}">
+        </label>
+        <label>
+          Review status
+          <select name="review_status">
+            <option value="needs_review" {% if bill.review_status == 'needs_review' %}selected{% endif %}>Needs review</option>
+            <option value="verified" {% if bill.review_status == 'verified' %}selected{% endif %}>Verified</option>
+          </select>
+        </label>
+        <label class="full">
+          OCR text or notes
+          <textarea name="raw_extracted_text" rows="8">{{ bill.raw_extracted_text or '' }}</textarea>
+        </label>
+
+        <div class="actions full">
+          <button type="submit">Update bill</button>
+        </div>
+      </form>
+    </article>
+  </section>
+{% endblock %}

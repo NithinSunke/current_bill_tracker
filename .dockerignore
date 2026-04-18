@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+instance/bill_tracker.db
+instance/ocr_cache/*
+uploads/*
+!instance/.gitkeep
+!uploads/.gitkeep

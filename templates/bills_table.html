@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Bills Table | Current Bill Tracker{% endblock %}
+
+{% block content %}
+  <section class="hero card">
+    <div>
+      <p class="eyebrow">Bills overview</p>
+      <h1>All saved bills in one table.</h1>
+      <p class="lede">
+        Review imported bill records, compare key details quickly, and open any row for full editing.
+      </p>
+    </div>
+  </section>
+
+  <section class="card table-card">
+    <div class="section-heading">
+      <h2>Saved bills</h2>
+      <p>{{ bills|length }} total</p>
+      </div>
+
+    {% if bills %}
+      <div class="table-wrap">
+        <table class="bills-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Consumer</th>
+              <th>Provider</th>
+              <th>Service No</th>
+              <th>Area Code</th>
+              <th>Bill Date</th>
+              <th>Due Date</th>
+              <th>Units</th>
+              <th>Net Amount</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for bill in bills %}
+              <tr>
+                <td>{{ bill.id }}</td>
+                <td>{{ bill.consumer_name or bill.original_filename or 'Manual entry' }}</td>
+                <td>{{ bill.provider or 'Not set' }}</td>
+                <td>{{ bill.service_number or 'Not set' }}</td>
+                <td>{{ bill.area_code or 'Not set' }}</td>
+                <td>{{ bill.bill_date or 'Not set' }}</td>
+                <td>{{ bill.due_date or 'Not set' }}</td>
+                <td>{{ bill.units_consumed or 'Not set' }}</td>
+                <td>{{ "%.2f"|format(bill.net_amount or 0) if bill.net_amount is not none else 'Not set' }}</td>
+                <td>
+                  <span class="status-pill {% if bill.review_status == 'verified' %}verified{% endif %}">
+                    {{ bill.review_status.replace('_', ' ') }}
+                  </span>
+                </td>
+                <td>
+                  <a class="table-link" href="{{ url_for('bill_detail', bill_id=bill.id) }}">Open</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty-state">No saved bills yet. Import a bill or save a manual entry, then this table will list every record here.</p>
+    {% endif %}
+  </section>
+{% endblock %}

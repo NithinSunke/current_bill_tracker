@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: bill_tracker
+      POSTGRES_USER: bill_user
+      POSTGRES_PASSWORD: bill_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bill_user -d bill_tracker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://bill_user:bill_password@db:5432/bill_tracker
+      SECRET_KEY: change-me-in-production
+    ports:
+      - "5000:5000"
+    volumes:
+      - uploads_data:/app/uploads
+      - app_instance:/app/instance
+
+volumes:
+  postgres_data:
+  uploads_data:
+  app_instance:

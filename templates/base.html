@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Current Bill Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="shell header-inner">
+        <div>
+          <p class="eyebrow">Local MVP</p>
+          <a class="brand" href="{{ url_for('index') }}">Current Bill Tracker</a>
+        </div>
+        <nav class="nav">
+          <a href="{{ url_for('dashboard') }}">Dashboard</a>
+          <a href="{{ url_for('index') }}">Upload</a>
+          <a href="{{ url_for('bills_table') }}">Bills Table</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell">
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <section class="flash-stack">
+            {% for message in messages %}
+              <div class="flash">{{ message }}</div>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

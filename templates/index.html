@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Bill | Current Bill Tracker{% endblock %}
+
+{% block content %}
+  <section class="hero card">
+    <div>
+      <p class="eyebrow">Bills in one place</p>
+      <h1>Upload a bill or enter it manually, then save it locally.</h1>
+      <p class="lede">
+        This first version stores the original PDF or image on disk and keeps the bill record in SQLite.
+        You can also skip the upload and type the bill details yourself, or paste OCR text and notes to prefill fields.
+      </p>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="card form-card">
+      <h2>Create bill record</h2>
+      <form action="{{ url_for('create_bill') }}" method="post" enctype="multipart/form-data" class="bill-form">
+        <label>
+          Bill file
+          <input type="file" name="bill_file" accept=".pdf,.png,.jpg,.jpeg,.webp">
+        </label>
+
+        <div class="upload-note">
+          {% if bill.original_filename %}
+            <strong>Imported file:</strong> {{ bill.original_filename }}
+          {% else %}
+            Upload is optional. You can use <strong>Import and draft</strong> when you have a PDF or image, or fill the form manually and save it directly.
+          {% endif %}
+        </div>
+
+        <input type="hidden" name="file_path" value="{{ bill.file_path or '' }}">
+        <input type="hidden" name="original_filename" value="{{ bill.original_filename or '' }}">
+        <input type="hidden" name="content_type" value="{{ bill.content_type or '' }}">
+
+        <label class="full">
+          OCR text or notes
+          <textarea name="raw_extracted_text" rows="6" placeholder="Paste text from OCR here if you have it. Missing fields will be drafted automatically where possible.">{{ bill.raw_extracted_text or '' }}</textarea>
+        </label>
+
+        <label>
+          Provider
+          <input type="text" name="provider" value="{{ bill.provider }}">
+        </label>
+        <label>
+          Bill type
+          <input type="text" name="bill_type" value="{{ bill.bill_type }}" placeholder="electricity">
+        </label>
+        <label>
+          Consumer name
+          <input type="text" name="consumer_name" value="{{ bill.consumer_name }}">
+        </label>
+        <label>
+          Service number
+          <input type="text" name="service_number" value="{{ bill.service_number }}">
+        </label>
+        <label>
+          Area code
+          <input type="text" name="area_code" value="{{ bill.area_code }}">
+        </label>
+        <label>
+          Mobile number
+          <input type="text" name="mobile_number" value="{{ bill.mobile_number }}">
+        </label>
+        <label class="full">
+          Address
+          <textarea name="address" rows="3">{{ bill.address }}</textarea>
+        </label>
+        <label>
+          Bill date
+          <input type="text" name="bill_date" value="{{ bill.bill_date }}" placeholder="dd/mm/yyyy">
+        </label>
+        <label>
+          Billing month
+          <input type="text" name="billing_month" value="{{ bill.billing_month }}" placeholder="mm/yyyy">
+        </label>
+        <label>
+          Due date
+          <input type="text" name="due_date" value="{{ bill.due_date }}" placeholder="dd/mm/yyyy">
+        </label>
+        <label>
+          Last paid date
+          <input type="text" name="last_paid_date" value="{{ bill.last_paid_date }}" placeholder="dd/mm/yyyy">
+        </label>
+        <label>
+          Units consumed
+          <input type="number" name="units_consumed" value="{{ bill.units_consumed or '' }}">
+        </label>
+        <label>
+          Net amount
+          <input type="number" step="0.01" name="net_amount" value="{{ bill.net_amount or '' }}">
+        </label>
+        <label>
+          Review status
+          <select name="review_status">
+            <option value="needs_review" {% if bill.review_status == 'needs_review' %}selected{% endif %}>Needs review</option>
+            <option value="verified" {% if bill.review_status == 'verified' %}selected{% endif %}>Verified</option>
+          </select>
+        </label>
+
+        <div class="actions full">
+          <button type="submit" formaction="{{ url_for('create_draft') }}" formmethod="post">Import and draft</button>
+          <button type="submit">Save bill</button>
+        </div>
+      </form>
+    </article>
+
+    <article class="card">
+      <div class="section-heading">
+        <h2>Recent bills</h2>
+        <a class="section-link" href="{{ url_for('bills_table') }}">View all</a>
+      </div>
+      {% if bills %}
+        <div class="bill-list">
+          {% for saved in bills %}
+            <a class="bill-row" href="{{ url_for('bill_detail', bill_id=saved.id) }}">
+              <div>
+                <strong>{{ saved.consumer_name or saved.original_filename or 'Manual entry' }}</strong>
+                <p>{{ saved.provider or 'Provider not set' }}</p>
+              </div>
+              <div class="bill-meta">
+                <span>{{ saved.bill_type or 'bill' }}</span>
+                <span>{{ "%.2f"|format(saved.net_amount or 0) }}</span>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-state">No bills yet. Upload a bill or add your first manual entry to start building the tracker.</p>
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}

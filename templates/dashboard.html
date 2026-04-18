@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Current Bill Tracker{% endblock %}
+
+{% block content %}
+  <section class="hero card">
+    <div>
+      <p class="eyebrow">Dashboard</p>
+      <h1>Bill tracking at a glance.</h1>
+      <p class="lede">
+        See saved bill volume, provider mix, review status, and recent due items without opening each record one by one.
+      </p>
+    </div>
+  </section>
+
+  <section class="metrics-grid">
+    <article class="card metric-card">
+      <p class="metric-label">Total bills</p>
+      <p class="metric-value">{{ dashboard.metrics.total_bills }}</p>
+    </article>
+    <article class="card metric-card">
+      <p class="metric-label">Verified</p>
+      <p class="metric-value">{{ dashboard.metrics.verified_bills }}</p>
+    </article>
+    <article class="card metric-card">
+      <p class="metric-label">Needs review</p>
+      <p class="metric-value">{{ dashboard.metrics.needs_review }}</p>
+    </article>
+    <article class="card metric-card">
+      <p class="metric-label">Total amount</p>
+      <p class="metric-value">{{ "%.2f"|format(dashboard.metrics.total_amount) }}</p>
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="card chart-card">
+      <div class="section-heading">
+        <h2>Provider split</h2>
+        <p>{{ dashboard.provider_chart|length }} providers</p>
+      </div>
+      {% if dashboard.provider_chart %}
+        <div class="bar-list">
+          {% for item in dashboard.provider_chart %}
+            <div class="bar-row">
+              <div class="bar-meta">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" style="width: {{ '%.2f'|format(item.width) }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-state">No saved bills yet.</p>
+      {% endif %}
+    </article>
+
+    <article class="card chart-card">
+      <div class="section-heading">
+        <h2>Status split</h2>
+        <p>review progress</p>
+      </div>
+      {% if dashboard.status_chart %}
+        <div class="bar-list">
+          {% for item in dashboard.status_chart %}
+            <div class="bar-row">
+              <div class="bar-meta">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill status-bar" style="width: {{ '%.2f'|format(item.width) }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-state">No review data yet.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="card chart-card">
+      <div class="section-heading">
+        <div>
+          <h2>Monthly totals</h2>
+          <p>amount by bill month</p>
+        </div>
+        {% if dashboard.available_years %}
+          <form method="get" class="chart-filter">
+            <label for="year">Year</label>
+            <select id="year" name="year" onchange="this.form.submit()">
+              {% for year in dashboard.available_years %}
+                <option value="{{ year }}" {% if year == dashboard.selected_year %}selected{% endif %}>{{ year }}</option>
+              {% endfor %}
+            </select>
+          </form>
+        {% endif %}
+      </div>
+      {% if dashboard.monthly_chart %}
+        <div class="column-chart">
+          {% for item in dashboard.monthly_chart %}
+            <div class="column-item">
+              <div class="column-value">{{ "%.0f"|format(item.amount) }}</div>
+              <div class="column-track">
+                <div class="column-fill" style="height: {{ '%.2f'|format(item.height) }}%"></div>
+              </div>
+              <div class="column-label">{{ item.label }}</div>
+              <div class="column-count">{{ item.count }} bills</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-state">No dated bills found for {{ dashboard.selected_year or 'the selected year' }}.</p>
+      {% endif %}
+    </article>
+
+    <article class="card chart-card">
+      <div class="section-heading">
+        <h2>Yearly totals</h2>
+        <p>amount by year</p>
+      </div>
+      {% if dashboard.yearly_chart %}
+        <div class="column-chart">
+          {% for item in dashboard.yearly_chart %}
+            <div class="column-item">
+              <div class="column-value">{{ "%.0f"|format(item.amount) }}</div>
+              <div class="column-track">
+                <div class="column-fill yearly-fill" style="height: {{ '%.2f'|format(item.height) }}%"></div>
+              </div>
+              <div class="column-label">{{ item.label }}</div>
+              <div class="column-count">{{ item.count }} bills</div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-state">No yearly data yet.</p>
+      {% endif %}
+    </article>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="card chart-card dashboard-span">
+      <div class="section-heading">
+        <h2>Recent due bills</h2>
+        <a class="section-link" href="{{ url_for('bills_table') }}">Open table</a>
+      </div>
+      {% if dashboard.recent_due %}
+        <div class="due-list">
+          {% for bill in dashboard.recent_due %}
+            <a class="due-row" href="{{ url_for('bill_detail', bill_id=bill.id) }}">
+              <div>
+                <strong>{{ bill.consumer_name or bill.original_filename or 'Manual entry' }}</strong>
+                <p>{{ bill.provider or 'Provider not set' }}</p>
+              </div>
+              <div class="due-meta">
+                <span>{{ bill.due_date or 'No due date' }}</span>
+                <span>{{ "%.2f"|format(bill.net_amount or 0) if bill.net_amount is not none else 'Not set' }}</span>
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-state">No due-date records yet.</p>
+      {% endif %}
+    </article>
+  </section>
+{% endblock %}
